@@ -43,15 +43,18 @@
  */
 package org.jahia.services.content.decorator;
 
-import com.google.common.collect.Lists;
 import org.apache.commons.lang.StringUtils;
+import org.jahia.registries.ServicesRegistry;
 import org.jahia.services.content.JCRContentUtils;
-import org.jahia.services.content.JCRNodeIteratorWrapper;
 import org.jahia.services.content.JCRNodeWrapper;
+import org.jahia.services.content.JCRSessionFactory;
 import org.jahia.services.usermanager.*;
+import org.jahia.settings.SettingsBean;
+import org.jahia.utils.i18n.Messages;
 import org.slf4j.Logger;
 
 import javax.jcr.NodeIterator;
+import javax.jcr.PathNotFoundException;
 import javax.jcr.RepositoryException;
 import javax.jcr.query.Query;
 import java.security.Principal;
@@ -104,7 +107,10 @@ public class JCRGroupNode extends JCRNodeDecorator {
         try {
             return new GroupNodeMembers(this);
         } catch (RepositoryException e) {
+            // do not log error in case of a PathNotFoundException on a transient (newly created) group node
+            if (!(e instanceof PathNotFoundException) || !isNew()) {
             logger.error("Cannot get member nodes");
+        }
         }
         return Collections.emptyList();
     }
@@ -209,4 +215,33 @@ public class JCRGroupNode extends JCRNodeDecorator {
         }
     }
 
+    @Override
+    public String getDisplayableName() {
+        try {
+            return getDisplayableName(getSession().getLocale());
+        } catch (RepositoryException e) {
+            logger.error("", e);
+        }
+        return super.getDisplayableName();
+    }
+
+    public String getDisplayableName(Locale locale) {
+        final String groupName = getName();
+        if (JahiaGroupManagerService.GUEST_GROUPNAME.equals(groupName)) {
+            Locale l = locale;
+            if (l == null) {
+                try {
+                    l = getSession().getLocale();
+                } catch (RepositoryException e) {
+                    logger.error("", e);
+                }
+                if (l == null) l = SettingsBean.getInstance().getDefaultLocale();
+                if (l == null) l = Locale.ENGLISH;
+            }
+            return Messages.get(ServicesRegistry.getInstance().getJahiaTemplateManagerService().getTemplatePackage(SettingsBean.getInstance().getGuestGroupResourceModuleName()),
+                    SettingsBean.getInstance().getGuestGroupResourceKey(), l, groupName);
+        }
+        return super.getDisplayableName();
+
+    }
 }

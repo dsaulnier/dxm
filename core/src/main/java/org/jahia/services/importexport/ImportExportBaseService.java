@@ -83,6 +83,7 @@ import org.jahia.services.templates.JahiaTemplateManagerService;
 import org.jahia.services.templates.TemplatePackageRegistry;
 import org.jahia.services.usermanager.JahiaUser;
 import org.jahia.services.usermanager.JahiaUserManagerService;
+import org.jahia.settings.SettingsBean;
 import org.jahia.utils.DateUtils;
 import org.jahia.utils.LanguageCodeConverters;
 import org.jahia.utils.Patterns;
@@ -1110,13 +1111,15 @@ public class ImportExportBaseService extends JahiaService implements ImportExpor
                         String languageCode;
                         if (name.indexOf("_") != -1) {
                             languageCode = name.substring(7, name.lastIndexOf("."));
+                            if (languageCode.contains("_") && "true".equalsIgnoreCase(StringUtils.trim(SettingsBean.getInstance().getPropertiesFile().getProperty("migration.simplify.localesWithRegions"))))
+                                languageCode = languageCode.substring(0, languageCode.indexOf('_'));
                         } else {
                             languageCode = site.getLanguagesAsLocales().iterator().next().toString();
                         }
                         zipentry.getSize();
 
                         LegacyImportHandler importHandler = new LegacyImportHandler(session, siteFolder, reg, mapping, LanguageCodeConverters.languageCodeToLocale(languageCode), infos != null ? originatingJahiaRelease : null, legacyPidMappingTool, legacyImportHandlerCtnId);
-                        Map<String, List<String>> references = new HashMap<String, List<String>>();
+                        Map<String, List<String>> references = new LinkedHashMap<String, List<String>>();
                         importHandler.setReferences(references);
 
                         InputStream documentInput = zis;
@@ -1164,14 +1167,22 @@ public class ImportExportBaseService extends JahiaService implements ImportExpor
         session.save(JCRObservationManager.IMPORT);
         cleanFilesList(fileList);
 
-        if (legacyImport && this.postImportPatcher != null) {
-            final long timerPIP = System.currentTimeMillis();
-            logger.info("Executing post import patches");
-            this.postImportPatcher.executePatches(site);
-            logger.info("Executed post import patches in {}", DateUtils.formatDurationWords(System.currentTimeMillis() - timerPIP));
+        /*
+        if (legacyImport) {
+            executePostImportPatches(site);
         }
+        */
 
         logger.info("Done importing site {} in {}", site != null ? site.getSiteKey() : "", DateUtils.formatDurationWords(System.currentTimeMillis() - timerSite));
+    }
+
+    public void executePostImportPatches(JahiaSite site) {
+        if (this.postImportPatcher == null) return;
+        final long timerPIP = System.currentTimeMillis();
+        final String siteKey = site.getSiteKey();
+        logger.info("Executing post import patches on site {}", siteKey);
+        this.postImportPatcher.executePatches(site);
+        logger.info("Executed post import patches on site {} in {}", siteKey, DateUtils.formatDurationWords(System.currentTimeMillis() - timerPIP));
     }
 
     private void cleanFilesList(List<String> fileList) {
@@ -1364,6 +1375,7 @@ public class ImportExportBaseService extends JahiaService implements ImportExpor
 
         List<JahiaTemplatesPackage> modules = new ArrayList<JahiaTemplatesPackage>();
 
+        final boolean removeRegionsInLocales = "true".equalsIgnoreCase(StringUtils.trim(SettingsBean.getInstance().getPropertiesFile().getProperty("migration.simplify.localesWithRegions")));
         for (Object key : keys) {
             String property = (String) key;
             String value = p.getProperty(property);
@@ -1372,24 +1384,30 @@ public class ImportExportBaseService extends JahiaService implements ImportExpor
 
             try {
                 if (firstKey.equals("language")) {
-                    String lang = st.nextToken();
+                    final String langToken = st.nextToken();
+                    final String lang;
+                    if (removeRegionsInLocales && langToken.contains("_")) {
+                        lang = langToken.substring(0, langToken.indexOf('_'));
+                    } else {
+                        lang = langToken;
+                    }
 
                     if (!languages.contains(lang)) {
                         languages.add(lang);
-                        if (!Boolean.valueOf(p.getProperty("language." + lang + ".activated", "true"))) {
+                        if (!Boolean.valueOf(p.getProperty("language." + langToken + ".activated", "true"))) {
                             inactiveLiveLanguages.add(lang);
                         }
-                        if (Boolean.valueOf(p.getProperty("language." + lang + ".disabledCompletely", "false"))) {
+                        if (Boolean.valueOf(p.getProperty("language." + langToken + ".disabledCompletely", "false"))) {
                             inactiveLanguages.add(lang);
                             languages.remove(lang);
                         }
-                        if (Boolean.valueOf(p.getProperty("language." + lang + ".mandatory", "false"))) {
+                        if (Boolean.valueOf(p.getProperty("language." + langToken + ".mandatory", "false"))) {
                             mandatoryLanguages.add(lang);
                         }
                         if (!inactiveLanguages.contains(lang) && (StringUtils.isEmpty(lowestRankLanguage)
-                                || p.containsKey("language." + lang + ".rank"))) {
+                                || p.containsKey("language." + langToken + ".rank"))) {
                             int langRank = NumberUtils.toInt(p
-                                    .getProperty("language." + lang + ".rank"));
+                                    .getProperty("language." + langToken + ".rank"));
                             if (currentRank == 0 || langRank < currentRank) {
                                 currentRank = langRank;
                                 lowestRankLanguage = lang;

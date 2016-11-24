@@ -46,6 +46,7 @@ package org.jahia.services.content.decorator;
 
 import org.apache.commons.lang.StringUtils;
 import org.jahia.api.Constants;
+import org.jahia.registries.ServicesRegistry;
 import org.jahia.services.content.JCRNodeWrapper;
 import org.jahia.services.pwd.PasswordService;
 import org.jahia.services.pwdpolicy.JahiaPasswordPolicyService;
@@ -54,6 +55,8 @@ import org.jahia.services.usermanager.JahiaGroupManagerService;
 import org.jahia.services.usermanager.JahiaUser;
 import org.jahia.services.usermanager.JahiaUserImpl;
 import org.jahia.services.usermanager.JahiaUserManagerService;
+import org.jahia.settings.SettingsBean;
+import org.jahia.utils.i18n.Messages;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -199,5 +202,34 @@ public class JCRUserNode extends JCRProtectedNodeAbstractDecorator {
      */
     public String getLocalPath() {
         return getPath();
+    }
+
+    @Override
+    public String getDisplayableName() {
+        try {
+            return getDisplayableName(getSession().getLocale());
+        } catch (RepositoryException e) {
+            logger.error("", e);
+        }
+        return super.getDisplayableName();
+    }
+
+    public String getDisplayableName(Locale locale) {
+        final String userName = getName();
+        if (Constants.GUEST_USERNAME.equals(userName)) {
+            Locale l = locale;
+            if (l == null) {
+                try {
+                    l = getSession().getLocale();
+                } catch (RepositoryException e) {
+                    logger.error("", e);
+                }
+                if (l == null) l = SettingsBean.getInstance().getDefaultLocale();
+                if (l == null) l = Locale.ENGLISH;
+            }
+            return Messages.get(ServicesRegistry.getInstance().getJahiaTemplateManagerService().getTemplatePackage(SettingsBean.getInstance().getGuestUserResourceModuleName()),
+                    SettingsBean.getInstance().getGuestUserResourceKey(), l, userName);
+        }
+        return super.getDisplayableName();
     }
 }

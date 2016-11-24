@@ -43,15 +43,18 @@
  */
 package org.jahia.services.importexport;
 
+import org.apache.commons.collections.MapUtils;
 import org.apache.commons.lang.StringUtils;
 import org.apache.jackrabbit.util.ISO9075;
 import org.jahia.api.Constants;
 import org.jahia.services.content.*;
 import org.jahia.services.content.nodetypes.ExtendedPropertyDefinition;
+import org.jahia.utils.DateUtils;
 import org.slf4j.Logger;
 
 import javax.jcr.*;
 import javax.jcr.nodetype.ConstraintViolationException;
+import java.text.MessageFormat;
 import java.util.*;
 
 /**
@@ -82,6 +85,7 @@ public class ReferencesHelper {
         boolean resolved;
         List<String> resolvedUUIDStringList = new LinkedList<String>();
         for (String uuid : references.keySet()) {
+            if (StringUtils.isBlank(uuid)) continue; // TODO review this, we need to identify the source
             final List<String> paths = references.get(uuid);
             resolved = true;
             if (uuidMapping.containsKey(uuid)) {
@@ -168,6 +172,7 @@ public class ReferencesHelper {
 
         int batchCount = 0;
         Map<String, String> uuidMapping = session.getUuidMapping();
+        //dumpUuidMapping(uuidMapping);
         while (ni.hasNext()) {
 
             batchCount++;
@@ -180,20 +185,24 @@ public class ReferencesHelper {
             Node refNode = ni.nextNode();
             String refuuid = refNode.getProperty(Constants.NODE).getString();
 
+            JCRNodeWrapper n = null;
+            String pName = null;
             try {
-                JCRNodeWrapper n = session.getNodeByUUID(refuuid);
+                n = session.getNodeByUUID(refuuid);
                 String uuid = refNode.getProperty("j:originalUuid").getString();
                 if (uuidMapping.containsKey(uuid)) {
-                    String pName = refNode.getProperty("j:propertyName").getString();
+                    pName = refNode.getProperty("j:propertyName").getString();
                     updateProperty(session, n, pName, uuidMapping.get(uuid), refNode.hasProperty("j:live") && refNode.getProperty("j:live").getBoolean());
                     refNode.remove();
                 } else if (uuid.startsWith("/") && session.itemExists(uuid)) {
-                    String pName = refNode.getProperty("j:propertyName").getString();
+                    pName = refNode.getProperty("j:propertyName").getString();
                     updateProperty(session, n, pName, session.getNode(uuid).getIdentifier(), refNode.hasProperty("j:live") && refNode.getProperty("j:live").getBoolean());
                     refNode.remove();
                 }
             } catch (ItemNotFoundException e) {
                 refNode.remove();
+            } catch (ConstraintViolationException cve) {
+                logger.error(String.format("An error occured while processing %s , impossible to update the property %s on node %s (%s)", refNode.getPath(), pName, n, cve.getMessage()));
             }
         }
         
@@ -214,8 +223,9 @@ public class ReferencesHelper {
 
     private static void update(List<String> paths, JCRSessionWrapper session, String value) throws RepositoryException {
         for (String path : paths) {
+            JCRNodeWrapper n = null;
             try {
-                JCRNodeWrapper n = session.getNodeByUUID(path.substring(0, path.lastIndexOf("/")));
+                n = session.getNodeByUUID(path.substring(0, path.lastIndexOf("/")));
                 String pName = path.substring(path.lastIndexOf("/") + 1);
                 if (pName.startsWith("@")) {
                     JCRNodeWrapper ref = n.addNode(pName.substring(1), "jnt:contentReference");
@@ -224,11 +234,11 @@ public class ReferencesHelper {
                     try {
                         updateProperty(session, n, pName, value, false);
                     } catch (ItemNotFoundException e) {
-                        logger.warn("Item not found: " + pName, e);
+                        logger.error("Item not found: " + pName, e);
                     }
                 }
             } catch (RepositoryException e) {
-                logger.warn("Error updating reference: " + path, e);
+                logger.error(MessageFormat.format("Error updating reference: {0} on node: {1} with value {2}", path, n == null ? "null" : n.getPath(), value), e);
             }
         }
     }
@@ -251,6 +261,9 @@ public class ReferencesHelper {
             JCRNodeWrapper ref = n.addNode("j:referenceInField_" + pName + "_" + id, "jnt:referenceInField");
             ref.setProperty("j:fieldName", pName);
             ref.setProperty("j:reference", value);
+        } else if (pName.startsWith("@")) {
+            JCRNodeWrapper ref = n.addNode(pName.substring(1), "jnt:contentReference");
+            updateProperty(session, ref, Constants.NODE, value, false);
         } else {
             final ExtendedPropertyDefinition propertyDefinition = n.getApplicablePropertyDefinition(pName);
             if (propertyDefinition == null) {
@@ -265,7 +278,7 @@ public class ReferencesHelper {
                     b |= target.isNodeType(constraint);
                 }
                 if (!b) {
-                    logger.warn("Cannot set reference to " + target.getPath() + ", constraint on " + n.getPath());
+                    logger.error("Cannot set reference to " + target.getPath() + ", constraint on " + n.getPath());
                     return;
                 }
             }
@@ -365,6 +378,79 @@ public class ReferencesHelper {
                 }
             });
             resolvedReferences.clear();
+        }
+    }
+
+    private static void dumpUuidMapping(final Map<String, String> uuidMapping) {
+        final long start = System.currentTimeMillis();
+        if (MapUtils.isEmpty(uuidMapping)) return;
+        try {
+            JCRTemplate.getInstance().doExecuteWithSystemSessionAsUser(null, Constants.EDIT_WORKSPACE, null, new JCRCallback<Object>() {
+                @Override
+                public Object doInJCR(JCRSessionWrapper session) throws RepositoryException {
+                    for (String legacyID : uuidMapping.keySet()) {
+                        if (StringUtils.isBlank(legacyID)) continue;
+                        if (legacyID.startsWith("/")) continue;
+                        final String newID = uuidMapping.get(legacyID);
+                        try {
+                            final Node mappingNode = getOrCreateUuidMappingNode(legacyID, session);
+                            if (!mappingNode.hasProperty("newID")) mappingNode.setProperty("newID", newID);
+                            else {
+                                final String savedNewID = mappingNode.getProperty("newID").getString();
+                                if (!StringUtils.equals(newID, savedNewID)) mappingNode.setProperty("newID", newID);
+                            }
+                        } catch (RepositoryException e) {
+                            logger.error("An error occured while persisting this mapping: " + legacyID + " -> " + newID, e);
+                        }
+                    }
+
+                    session.save();
+                    return null;
+                }
+            });
+        } catch (RepositoryException e) {
+            logger.error("An error occured while persisting the Uuid mapping", e);
+        }
+        logger.info("Persisted the UUID mapping in " + DateUtils.formatDurationWords(System.currentTimeMillis() - start));
+    }
+
+    private static String getUuidMappingKeeperPath(String legacyID) {
+        final int splitLength = 4;
+        final StringBuilder path = new StringBuilder();
+        for (int i = 0; i < legacyID.length(); i++) {
+            final char c = legacyID.charAt(i);
+            if (c == '-') continue;
+            path.append(c);
+            if (path.length() % (splitLength+1) == splitLength) path.append("/");
+        }
+
+        final int length = path.length();
+        final int extraChars = length % (splitLength+1);
+        if (extraChars > 0)
+            path.delete(length - extraChars, length);
+
+        return path.toString();
+    }
+
+    private static Node getOrCreateUuidMappingNode(String legacyID, JCRSessionWrapper session) throws RepositoryException {
+        final String folderPath = getUuidMappingKeeperPath(legacyID);
+        final String[] folders = StringUtils.split(folderPath, "/");
+        Node f = getOrCreateUuidMappingRootNode(session);
+        for (String folder : folders) {
+            if (f.hasNode(folder)) f = f.getNode(folder);
+            else f = f.addNode(folder, "nt:unstructured");
+        }
+        if (f.hasNode(legacyID)) return f.getNode(legacyID);
+        final Node node = f.addNode(legacyID, "nt:unstructured");
+        node.setProperty("legacyID", legacyID);
+        return node;
+    }
+
+    private static Node getOrCreateUuidMappingRootNode(JCRSessionWrapper session) throws RepositoryException {
+        try {
+            return session.getNode("/uuidMapping");
+        } catch (RepositoryException e) {
+            return session.getNode("/").addNode("uuidMapping", "nt:unstructured");
         }
     }
 

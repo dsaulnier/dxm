@@ -62,6 +62,7 @@ public class XMLFormatDetectionHandler extends DefaultHandler {
     public static final int JCR_SYSVIEW = 1;
     public static final int JCR_DOCVIEW = 2;
     public static final int JAHIA_CONTENT = 3;
+    public static final int JAHIA_CONTENT_EMPTY = 6;
     public static final int USERS = 4;
     public static final int CATEGORIES = 5;
 
@@ -79,6 +80,8 @@ public class XMLFormatDetectionHandler extends DefaultHandler {
 
         if (localName.equals("page") && uri.equals("http://www.jahia.org/")) {
             type = JAHIA_CONTENT;
+        } else if (localName.equals("empty") && uri.equals("http://www.jahia.org/")) {
+            type = JAHIA_CONTENT_EMPTY;
         } else if (localName.equals("categories") && uri.equals("http://www.jahia.org/")) {
             type = CATEGORIES;
         } else if (localName.equals("users") && uri.equals("http://www.jahia.org/")) {

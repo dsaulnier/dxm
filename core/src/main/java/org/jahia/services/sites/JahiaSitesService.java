@@ -331,6 +331,49 @@ public class JahiaSitesService extends JahiaService {
         return site;
     }
 
+    public JahiaSite addSiteWithUuidMapping(final JahiaUser currentUser, final String title, final String serverName, final String siteKey, final String descr,
+                                            final Locale selectedLocale, final String selectTmplSet, final String[] modulesToDeploy, final String firstImport, final Resource fileImport, final String fileImportName,
+                                            final Boolean asAJob, final Boolean doImportServerPermissions, final String originatingJahiaRelease, final Resource legacyMappingFilePath, final Resource legacyDefinitionsFilePath,
+                                            final Map<String, String> uuidMapping) throws JahiaException, IOException {
+
+        JahiaSite site = null;
+        final List<Exception> errors = new ArrayList<Exception>(1);
+        try {
+            site = JCRTemplate.getInstance().doExecuteWithSystemSession(new JCRCallback<JahiaSite>() {
+                public JahiaSite doInJCR(JCRSessionWrapper session) throws RepositoryException {
+                    try {
+                        session.getPathMapping().putAll(JCRSessionFactory.getInstance().getCurrentUserSession().getPathMapping());
+                        session.getUuidMapping().putAll(uuidMapping);
+                        final JahiaSite jahiaSite = addSite(currentUser, title, serverName, siteKey, descr, selectedLocale, selectTmplSet, modulesToDeploy, firstImport, fileImport, fileImportName, asAJob, doImportServerPermissions, originatingJahiaRelease, legacyMappingFilePath, legacyDefinitionsFilePath, session);
+                        uuidMapping.putAll(session.getUuidMapping());
+                        return jahiaSite;
+                    } catch (IOException e) {
+                        errors.add(e);
+                    } catch (JahiaException e) {
+                        errors.add(e);
+                    }
+
+                    return null;
+                }
+            });
+        } catch (RepositoryException e) {
+            throw new JahiaException("", "", 0, 0, e);
+        }
+        if (!errors.isEmpty()) {
+            Exception e = errors.get(0);
+            if (e instanceof JahiaException) {
+                throw (JahiaException) e;
+            } else if (e instanceof IOException) {
+                throw (IOException) e;
+            } else {
+                // ?
+                throw new JahiaException("", "", 0, 0, e);
+            }
+        }
+
+        return site;
+    }
+
     public JahiaSite addSite(JahiaUser currentUser, String title, String serverName, String siteKey, String descr,
                              Locale selectedLocale, String selectTmplSet, final String[] modulesToDeploy, String firstImport, Resource fileImport, String fileImportName,
                              Boolean asAJob, Boolean doImportServerPermissions, String originatingJahiaRelease, Resource legacyMappingFilePath, Resource legacyDefinitionsFilePath, JCRSessionWrapper session) throws JahiaException, IOException {

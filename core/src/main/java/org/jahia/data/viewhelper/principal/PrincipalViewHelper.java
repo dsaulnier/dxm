@@ -265,29 +265,29 @@ public class PrincipalViewHelper implements Serializable {
      */
     public static String getDisplayName(Object p, Locale locale) {
         if (p instanceof JCRUserNode) {
-            JCRUserNode jahiaUser = (JCRUserNode) p;
-            String userName = jahiaUser.getName();
-            userName = getUserDisplayName(userName, locale);
-            return userName;
+            return ((JCRUserNode) p).getDisplayableName(locale);
         } else if (p instanceof JCRGroupNode) {
-            JCRGroupNode jahiaGroup = (JCRGroupNode) p;
-            String groupName = jahiaGroup.getName();
-            groupName = getGroupDisplayName(groupName, locale);
-            return groupName;
+            return ((JCRGroupNode) p).getDisplayableName(locale);
         } else if (p instanceof JahiaUser) {
-            JahiaUser jahiaUser = (JahiaUser) p;
-            String userName = jahiaUser.getName();
-            userName = getUserDisplayName(userName, locale);
-            return userName;
+            final JahiaUser jahiaUser = (JahiaUser) p;
+            try {
+                return ((JCRUserNode) JCRSessionFactory.getInstance().getCurrentUserSession().getNode(jahiaUser.getLocalPath())).getDisplayableName(locale);
+            } catch (RepositoryException e) {
+                logger.error("", e);
+            }
+            return jahiaUser.getName();
         } else if (p instanceof JahiaGroup) {
-            JahiaGroup jahiaGroup = (JahiaGroup) p;
-            String groupName = jahiaGroup.getName();
-            groupName = getGroupDisplayName(groupName, locale);
-            return groupName;
+            final JahiaGroup jahiaGroup = (JahiaGroup) p;
+            try {
+                return ((JCRGroupNode) JCRSessionFactory.getInstance().getCurrentUserSession().getNode(jahiaGroup.getLocalPath())).getDisplayableName(locale);
+            } catch (RepositoryException e) {
+                logger.error("", e);
+            }
+            return jahiaGroup.getName();
         } else if (p instanceof Principal) {
             return ((Principal) p).getName();
         } else {
-            throw new IllegalArgumentException("getFullName only support Principal, JCRGroupNode, JCRUserNode, " + p.getClass().getName() + " is not supported ");
+            throw new IllegalArgumentException("getDisplayName only support Principal, JCRGroupNode, JCRUserNode, " + p.getClass().getName() + " is not supported ");
         }
     }
 

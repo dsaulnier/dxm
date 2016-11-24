@@ -512,7 +512,6 @@ public class LegacyImportHandler extends DefaultHandler {
                     pageKey = "untitled";
                     logger.error(MessageFormat.format("Impossible to generate a system name from page title =[{0}] , uuid={1}", title, uuid), npe);
                 }
-                pageKey = JCRContentUtils.findAvailableNodeName(parent, pageKey);
             }
 
             // remove all unsupported characters
@@ -520,6 +519,12 @@ public class LegacyImportHandler extends DefaultHandler {
             pageKey = JCRContentUtils.replaceColon(pageKey);
             pageKey = pageKey.replace('[', '_');
             pageKey = pageKey.replace(']', '_');
+
+            final String availableNodeName = JCRContentUtils.findAvailableNodeName(parent, pageKey);
+            if (!StringUtils.equals(pageKey, availableNodeName)) {
+                logger.warn(String.format("Updated the page system name to avoid merging with another one. Page path: %s/%s", parent.getPath(), availableNodeName));
+            }
+            pageKey = availableNodeName;
 
             ExtendedNodeType pageType = registry.getNodeType("jnt:page");
             String templateName = "";

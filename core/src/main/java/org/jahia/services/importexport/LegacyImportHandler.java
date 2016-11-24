@@ -512,6 +512,7 @@ public class LegacyImportHandler extends DefaultHandler {
                     pageKey = "untitled";
                     logger.error(MessageFormat.format("Impossible to generate a system name from page title =[{0}] , uuid={1}", title, uuid), npe);
                 }
+                pageKey = JCRContentUtils.findAvailableNodeName(parent, pageKey);
             }
 
             // remove all unsupported characters

@@ -770,7 +770,7 @@ public class LegacyImportHandler extends DefaultHandler {
                 }
             }
         }
-        
+
         handleContainerListSorting(attributes.getValue("jahia:sortHandler"), primaryNodeType);
     }
 
@@ -1412,6 +1412,10 @@ public class LegacyImportHandler extends DefaultHandler {
                 final String propName = properties.next();
                 try {
                     final String propValue = String.valueOf(propertiesToSet.get(propName));
+                    final String formerValue;
+                    if (node.hasProperty(propName) && !propValue.equals(formerValue = node.getPropertyAsString(propName))) {
+                        logger.warn(String.format("Overwriting property %s on node %s, former value: [%s], new value: [%s]", propName, node.getPath(), formerValue, propValue));
+                    }
                     if (logger.isDebugEnabled()) {
                         logger.debug(MessageFormat.format("Setting the property {0} with value [{1}] on the node {2} in language {3}",
                                 propName, propValue, node.getPath(), this.locale.toString()));

@@ -501,8 +501,10 @@ public class LegacyImportHandler extends DefaultHandler {
                 session.checkout(parent);
             }
 
+            boolean isHome = false;
             if (currentCtx.isEmpty()) {
                 pageKey = "home";
+                isHome = true;
             }
 
             if (pageKey == null) {
@@ -514,17 +516,19 @@ public class LegacyImportHandler extends DefaultHandler {
                 }
             }
 
-            // remove all unsupported characters
-            pageKey = pageKey.replace('/', '_');
-            pageKey = JCRContentUtils.replaceColon(pageKey);
-            pageKey = pageKey.replace('[', '_');
-            pageKey = pageKey.replace(']', '_');
+            if (!isHome) {
+                // remove all unsupported characters
+                pageKey = pageKey.replace('/', '_');
+                pageKey = JCRContentUtils.replaceColon(pageKey);
+                pageKey = pageKey.replace('[', '_');
+                pageKey = pageKey.replace(']', '_');
 
-            final String availableNodeName = JCRContentUtils.findAvailableNodeName(parent, pageKey);
-            if (!StringUtils.equals(pageKey, availableNodeName)) {
-                logger.warn(String.format("Updated the page system name to avoid merging with another one. Page path: %s/%s", parent.getPath(), availableNodeName));
+                final String availableNodeName = JCRContentUtils.findAvailableNodeName(parent, pageKey);
+                if (!StringUtils.equals(pageKey, availableNodeName)) {
+                    logger.warn(String.format("Updated the page system name to avoid merging with another one. Page path: %s/%s", parent.getPath(), availableNodeName));
+                }
+                pageKey = availableNodeName;
             }
-            pageKey = availableNodeName;
 
             ExtendedNodeType pageType = registry.getNodeType("jnt:page");
             String templateName = "";
